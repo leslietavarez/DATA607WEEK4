@@ -1,0 +1,161 @@
+---
+title: "DATA607 WEEK 4"
+author: "Leslie Tavarez"
+date: "2024-09-28"
+output: html_document
+---
+
+# Assignment – Tidying and Transforming Data
+
+##### Load data and libraries
+```{r}
+library(tidyr)
+library(dplyr)
+library(stringr)
+library(readr)
+
+
+
+uncleanflights <- read_csv("/Users/leslie/607/607data.csv")
+uncleanflights
+```
+
+##### First, I will change the names of the first and second column to "airline" and "status". This way any one who looks at my data knows what each column is for. Then I will add the airline name to the delayed rows 2 and 4. This will help me later when I switch from wide to long data. I will also omit any NA values and convert data to lowercase to enhance data intergerity and reduce errors. 
+
+```{r}
+
+names(uncleanflights)
+
+names(uncleanflights) <- c("airline", "status", "los_angeles", "phoenix", "san_diego", "san_francisco", "seattle")
+print(uncleanflights)
+
+uncleanflights[2, "airline"] <- "ALASKA"
+uncleanflights[4, "airline"] <- "AM WEST"
+
+uncleanflights <- uncleanflights %>%
+na.omit(uncleanflights)
+
+uncleanflights <- uncleanflights %>%
+mutate(airline = tolower(airline))
+
+uncleanflights
+```
+
+##### Now, I will reshape my data from wide to long format. 
+
+```{r}
+
+long_flights <-
+  pivot_longer(uncleanflights, cols = -c(airline, status), names_to = "destination", values_to = "flights")
+
+
+long_flights
+
+```
+
+
+##### The question I want to answer is: "Which airline experiences the highest number of flight delays?". Here, I create a table isolating the number of delayed flights by the airline and destination. Then, I use this data to create a histogram. From the histogram, it seems like AM West experiences the highest number of delays. However, is it possible that AM West flies more frequently then Alaska? 
+
+```{r}
+delayed_flights <- long_flights %>%
+                    filter(long_flights$status == "delayed")
+delayed_flights
+```
+
+```{r}
+library(ggplot2)
+
+    ggp <- ggplot(data=delayed_flights, aes(x=destination, y=flights, fill=airline))
+    ggp <- ggp +  ggtitle('Delayed Flights') + theme(plot.title = element_text(hjust = 0.5))
+    ggp <- ggp + geom_text(aes(label=flights), vjust=-0.2,
+                            position = position_dodge(0.9), size=3.5) +
+                            scale_fill_brewer(palette="Paired") +
+            geom_bar(stat="identity", position=position_dodge()) 
+ggp
+```
+
+
+##### I think I need to continue to analyze this. I am going to try to make separate columns for delayed and on time. Then I want to group the data by airline, then find the percentage of delayed flight for each airline, then compare. 
+```{r}
+key_longdata <- gather(uncleanflights, "city", "count", 3:7)
+key_longdata
+
+library(DT)
+transformed <- spread(key_longdata,status,count)
+datatable(transformed, extensions = 'Scroller', options = list(scrollY = 200, scroller = TRUE ))
+
+
+```
+
+##### I want to compare the percentage of delayed flights by city and airline. I will plot this to see if the percentages of delays for each city are similar for both airlines. 
+
+##### In this histogram, AM West has a higher percentage of delayed flights for every single city! I think this histogram is better for data analysis then my previous one because here I take into consideration the total amount of flights for each airline. In this histogram, we can see that although AM West has a higher percentage of flight delays per city, Alaska Airline also has similar percentages of flight delays. 
+
+##### Both airlines have the highest chance of flight delays when traveling to San Fransisco. If we had more data, perhaps on weather or air traffic we could analyze why does San Francisco has the highest delays. 
+```{r}
+percentage_delays <- transformed %>%
+  mutate(
+    total_flights = `on time` + delayed,  # Calculate total flights
+    percentage_delayed = (delayed / total_flights) * 100  # Calculate percentage
+  ) %>%
+  select(airline, city, total_flights, delayed, percentage_delayed)  # Select relevant columns
+
+# Display the results
+print(percentage_delays)
+
+ggplot(percentage_delays, aes(x = city, y = percentage_delayed, fill = airline)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(
+    title = "Percentage of Delayed Flights by Airline and City",
+    x = "City",
+    y = "Percentage of Delayed Flights (%)"
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1")  # Optional: Use a color palette
+```
+
+##### I am isolating the Alaska Airline data to look at it more closely. 
+```{r}
+alaska_delays <- transformed %>%
+  filter(airline == "alaska")
+print(alaska_delays)
+```
+
+
+##### Now, I will do the same for AM WEST, isolate the data to look at it more closely 
+```{r}
+amwest_delays <- transformed %>%
+  filter(airline == "am west")
+print(amwest_delays)
+```
+
+##### Lastly, I want to compare the total percentage of delayed flights for Alaska Airline and AM West Airline. AM WEST has a total delay percentage of 10.89%.Alaska has a total percentage of delayed flights of 13.33%.
+```{r}
+total_delay_am_west <- percentage_delays %>%
+  filter(airline == "am west") %>%  # Adjust the airline code if needed
+  summarise(
+    total_delayed = sum(delayed),
+    total_flights = sum(total_flights),
+    percentage_delayed = (total_delayed / total_flights) * 100
+  )
+
+# Display the result
+print(total_delay_am_west)
+
+```
+
+```{r}
+total_delay_alaska <- percentage_delays %>%
+  filter(airline == "alaska") %>%  # Adjust the airline code if needed
+  summarise(
+    total_delayed = sum(delayed),
+    total_flights = sum(total_flights),
+    percentage_delayed = (total_delayed / total_flights) * 100
+  )
+
+# Display the result
+print(total_delay_alaska)
+
+```
+
+##### In conclusion, AM West Airlines has a lower percentage of delayed flights than initially perceived. I'm pleased that I continued to analyze the data, as my earlier analysis did not reveal this insight. Although AM West has a higher total number of flights, which might suggest higher delays, our recent findings clarify that the actual percentage of delayed flights is lower than expected.
